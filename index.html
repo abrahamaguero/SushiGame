@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>🍣 Sushi Invasion 🚀</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -22,6 +22,12 @@
     --border: rgba(255, 255, 255, 0.12);
   }
 
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
   body {
     font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
     background:
@@ -29,7 +35,7 @@
       radial-gradient(ellipse at 80% 80%, rgba(255, 62, 155, 0.20), transparent 50%),
       radial-gradient(ellipse at center, var(--bg-2) 0%, var(--bg-0) 100%);
     color: var(--text);
-    min-height: 100vh;
+    min-height: 100%;
     overflow: hidden;
   }
 
@@ -377,33 +383,19 @@
     position: relative;
     border-radius: 16px;
     overflow: hidden;
+    flex-shrink: 0;
     box-shadow:
       0 0 60px rgba(157, 75, 255, 0.4),
       0 0 120px rgba(0, 229, 255, 0.15),
       inset 0 0 0 2px rgba(255, 255, 255, 0.08);
-    /* Fill the entire available space — panel takes 420px, 16px padding
-     * reserved total. Aspect ratio is maintained. */
-    width:  min(calc(100vw - 436px), calc((100vh - 16px) * (1120 / 640)));
-    aspect-ratio: 1120 / 640;
+    /* Size set by resizeCanvas() in JS */
   }
 
   canvas {
     display: block;
     background: #000;
-    image-rendering: pixelated;
     width: 100%;
     height: 100%;
-  }
-
-  /* Panel closed — use the whole viewport. */
-  .app.panel-closed .canvas-wrap {
-    width: min(calc(100vw - 16px), calc((100vh - 16px) * (1120 / 640)));
-  }
-
-  @media (max-width: 1100px) {
-    .canvas-wrap {
-      width: min(calc(100vw - 16px), calc((100vh - 16px) * (1120 / 640)));
-    }
   }
 
   /* === PRODUCTION MODE (deployed) === */
@@ -411,11 +403,7 @@
   body.production .panel,
   body.production #btn-open-panel { display: none !important; }
   body.production .game-area { padding: 0; }
-  body.production .canvas-wrap {
-    width: min(100vw, calc(100vh * (1120 / 640)));
-    border-radius: 0;
-    box-shadow: none;
-  }
+  body.production .canvas-wrap { border-radius: 0; box-shadow: none; }
 
   /* === REPOSITIONABLE JOYSTICK — left capture zone === */
   #left-zone {
@@ -5686,6 +5674,20 @@ function clearSavedState() {
   try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
 }
 
+function resizeCanvas() {
+  const wrap = document.querySelector('.canvas-wrap');
+  const panel = document.querySelector('.panel');
+  if (!wrap) return;
+  const panelW = (panel && panel.offsetWidth) ? panel.offsetWidth : 0;
+  const availW = window.innerWidth  - panelW;
+  const availH = window.innerHeight;
+  const scale  = Math.min(availW / 1120, availH / 640);
+  const w = Math.floor(1120 * scale);
+  const h = Math.floor(640  * scale);
+  wrap.style.width  = w + 'px';
+  wrap.style.height = h + 'px';
+}
+
 function init() {
   for (const def of ASSET_DEFS) {
     placeholders[def.key] = generatePlaceholder(def.key);
@@ -5697,11 +5699,15 @@ function init() {
 
   setupLevel();
   setupPanel();
-  installGeneratedSfx();  // procedurally generated defaults for shoot/hit/jetpack
-  setupTouchControls();    // Virtual joystick + fire button (iPad, mobile)
+  installGeneratedSfx();
+  setupTouchControls();
   setupStartStars();
+  resizeCanvas();
   showStartScreen();
   requestAnimationFrame(gameLoop);
+
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
 
   // Try to auto-load images from ./assets/ folder
   // Skip any asset that was already restored from localStorage.
@@ -5849,6 +5855,7 @@ function init() {
     openBtn.classList.toggle('show', !open);
     state.panelOpen = open;
     queueSave();
+    setTimeout(resizeCanvas, 320);
   };
   document.getElementById('btn-close-panel').addEventListener('click', () => setPanelOpen(false));
   openBtn.addEventListener('click', () => setPanelOpen(true));
