@@ -257,6 +257,73 @@
   }
   .hud-overlay.hidden { display: none; }
 
+  .pause-btn {
+    position: absolute;
+    top: calc(10px * var(--gs,1));
+    right: calc(10px * var(--gs,1));
+    width: calc(44px * var(--gs,1));
+    height: calc(44px * var(--gs,1));
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: calc(20px * var(--gs,1));
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+    line-height: 1;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    transition: background 0.15s;
+  }
+  .pause-btn:active { background: rgba(255,255,255,0.25); }
+  .pause-btn.hidden { display: none; }
+
+  .pause-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 70;
+    backdrop-filter: blur(6px);
+  }
+  .pause-overlay.hidden { display: none; }
+  .pause-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(16px * var(--gs,1));
+  }
+  .pause-title {
+    font-family: 'Fredoka One', sans-serif;
+    font-size: calc(48px * var(--gs,1));
+    color: #fff;
+    text-shadow: 0 3px 12px rgba(0,0,0,0.6);
+    letter-spacing: 4px;
+  }
+  .pause-action-btn {
+    min-width: calc(220px * var(--gs,1));
+    padding: calc(14px * var(--gs,1)) calc(28px * var(--gs,1));
+    border-radius: calc(40px * var(--gs,1));
+    border: none;
+    font-family: 'Fredoka One', sans-serif;
+    font-size: calc(22px * var(--gs,1));
+    cursor: pointer;
+    background: linear-gradient(135deg, #4be8ff, #1e78ff);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(30,120,255,0.5);
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .pause-action-btn:active { transform: scale(0.96); }
+  .pause-home-btn {
+    background: linear-gradient(135deg, #ff6b6b, #c0392b);
+    box-shadow: 0 4px 16px rgba(192,57,43,0.5);
+  }
+
   .hud-stack-left {
     position: absolute;
     top: 16px;
@@ -1297,6 +1364,14 @@
             <span class="hud-chip-value"><span id="hud-level-world">1</span>-<span id="hud-level-num">1</span></span>
           </div>
         </div>
+        <button class="pause-btn hidden" id="pause-btn" aria-label="Pausa">⏸</button>
+      </div>
+      <div class="pause-overlay hidden" id="pause-overlay">
+        <div class="pause-panel">
+          <div class="pause-title">PAUSA</div>
+          <button class="pause-action-btn" id="pause-resume-btn">▶ Continuar</button>
+          <button class="pause-action-btn pause-home-btn" id="pause-home-btn">⌂ Volver al Home</button>
+        </div>
       </div>
       <div class="start-screen" id="start-screen">
         <img class="start-logo" id="start-logo" alt="logo">
@@ -2275,6 +2350,7 @@ const vfx = {
 /* ---------- STATE ---------- */
 const state = {
   screen: 'start',            // 'start' | 'select' | 'playing' | 'gameover' | 'won'
+  paused: false,
   selectedCharacter: 'playerGirl',
   charNames: { playerGirl: 'Alessia', playerBoy: 'Abraham', playerEli: 'Eli', playerSimba: 'SIMBA' },
   currentMusic: null,
@@ -4192,6 +4268,9 @@ function restartCurrentLevel() {
 function gameOver() {
   state.gameOver = true;
   state.screen = 'gameover';
+  state.paused = false;
+  document.getElementById('pause-btn').classList.add('hidden');
+  document.getElementById('pause-overlay').classList.add('hidden');
   if (state.currentMusic) stopSound(state.currentMusic);
   state.currentMusic = null;
   playMusicForScreen('gameover');
@@ -4203,6 +4282,9 @@ function gameOver() {
 function winGame() {
   state.won = true;
   state.screen = 'won';
+  state.paused = false;
+  document.getElementById('pause-btn').classList.add('hidden');
+  document.getElementById('pause-overlay').classList.add('hidden');
   playSound('jump');
   if (state.currentMusic) stopSound(state.currentMusic);
   state.currentMusic = null;
@@ -4834,6 +4916,34 @@ function setupPanel() {
     showStartScreen();
   });
 
+  // Pause button
+  function pauseGame() {
+    if (state.screen !== 'playing' || state.paused) return;
+    state.paused = true;
+    state.lastTime = 0; // reset so dt doesn't spike on resume
+    if (state.currentMusic && sounds[state.currentMusic] && sounds[state.currentMusic].audio) {
+      try { sounds[state.currentMusic].audio.pause(); } catch(e) {}
+    }
+    document.getElementById('pause-overlay').classList.remove('hidden');
+  }
+  function resumeGame() {
+    if (!state.paused) return;
+    state.paused = false;
+    if (state.currentMusic && sounds[state.currentMusic] && sounds[state.currentMusic].audio) {
+      try { sounds[state.currentMusic].audio.play().catch(() => {}); } catch(e) {}
+    }
+    document.getElementById('pause-overlay').classList.add('hidden');
+  }
+  document.getElementById('pause-btn').addEventListener('click', pauseGame);
+  document.getElementById('pause-resume-btn').addEventListener('click', resumeGame);
+  document.getElementById('pause-home-btn').addEventListener('click', () => {
+    state.paused = false;
+    document.getElementById('pause-overlay').classList.add('hidden');
+    if (state.currentMusic) stopSound(state.currentMusic);
+    state.currentMusic = null;
+    showStartScreen();
+  });
+
   // VFX controls
   document.getElementById('vfx-bg-top').addEventListener('input', e => { bgColors.top = e.target.value; queueSave(); });
   document.getElementById('vfx-bg-bottom').addEventListener('input', e => { bgColors.bottom = e.target.value; queueSave(); });
@@ -5437,6 +5547,8 @@ function gameLoop(timestamp) {
     pollGamepad();
     if (state.screen === 'start' || state.screen === 'select') {
       renderStartScreen(dt);
+    } else if (state.paused) {
+      render();
     } else {
       update(dt);
       render();
@@ -5464,6 +5576,9 @@ function showStartScreen() {
   document.getElementById('start-screen').classList.remove('hidden');
   document.getElementById('select-screen').classList.add('hidden');
   document.getElementById('touch-controls').classList.add('hidden');
+  document.getElementById('pause-btn').classList.add('hidden');
+  document.getElementById('pause-overlay').classList.add('hidden');
+  state.paused = false;
   setHudVisible(false);
   playMusicForScreen('start');
 }
@@ -5473,6 +5588,9 @@ function showSelectScreen() {
   document.getElementById('start-screen').classList.add('hidden');
   document.getElementById('select-screen').classList.remove('hidden');
   document.getElementById('touch-controls').classList.add('hidden');
+  document.getElementById('pause-btn').classList.add('hidden');
+  document.getElementById('pause-overlay').classList.add('hidden');
+  state.paused = false;
   // refresh char preview images
   updateCharSelectImage('playerGirl');
   updateCharSelectImage('playerBoy');
@@ -5493,8 +5611,10 @@ function startGame() {
   document.getElementById('start-screen').classList.add('hidden');
   document.getElementById('select-screen').classList.add('hidden');
   state.screen = 'playing';
+  state.paused = false;
   setupLevel();
   setHudVisible(true);
+  document.getElementById('pause-btn').classList.remove('hidden');
   const tc = document.getElementById('touch-controls');
   if (tc && tc.dataset.touchEnabled) tc.classList.remove('hidden');
   playMusicForScreen('playing');
