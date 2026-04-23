@@ -274,7 +274,6 @@
     justify-content: center;
     z-index: 60;
     line-height: 1;
-    backdrop-filter: blur(4px);
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     transition: background 0.15s;
   }
@@ -284,12 +283,11 @@
   .pause-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.65);
+    background: rgba(0,0,0,0.72);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 70;
-    backdrop-filter: blur(6px);
   }
   .pause-overlay.hidden { display: none; }
   .pause-panel {
@@ -1721,6 +1719,23 @@ const W = 1120, H = 640;
 const LEVEL_WIDTH = 4000;
 const BULLET_SPEED = 11;
 let _musicUnlocked = false; // true after first user gesture — lets late-loading music start
+
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+function glow(blur, color) { if (!isMobile) { ctx.shadowBlur = blur; ctx.shadowColor = color; } }
+function clearGlow() { if (!isMobile) ctx.shadowBlur = 0; }
+
+// Cached sky gradient — recreated only when colors change
+let _skyGradKey = '', _skyGrad = null;
+function getSkyGrad(bg) {
+  const key = bg.top + bg.bottom;
+  if (key !== _skyGradKey || !_skyGrad) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, bg.top);
+    g.addColorStop(1, bg.bottom);
+    _skyGrad = g; _skyGradKey = key;
+  }
+  return _skyGrad;
+}
 const GOAL_X = 3850;
 
 /* Mutable physics / behaviors - editable from the Behaviors tab */
@@ -3557,11 +3572,7 @@ function setupStartStars() {
 }
 
 function renderStartScreen(dt) {
-  // Background gradient
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
-  skyGrad.addColorStop(0, bgColors.top);
-  skyGrad.addColorStop(1, bgColors.bottom);
-  ctx.fillStyle = skyGrad;
+  ctx.fillStyle = getSkyGrad(bgColors);
   ctx.fillRect(0, 0, W, H);
 
   // Drifting stars
@@ -4478,10 +4489,7 @@ function render() {
   const bg = inGame && worldBgColors[state.level.world - 1]
     ? worldBgColors[state.level.world - 1]
     : bgColors;
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
-  skyGrad.addColorStop(0, bg.top);
-  skyGrad.addColorStop(1, bg.bottom);
-  ctx.fillStyle = skyGrad;
+  ctx.fillStyle = getSkyGrad(bg);
   ctx.fillRect(0, 0, W, H);
 
   // Stars layer 0 — farthest, slowest, small
@@ -4538,8 +4546,7 @@ function render() {
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(pulse * sc, pulse * sc);
-      ctx.shadowBlur = 22;
-      ctx.shadowColor = '#ff3e9b';
+      glow(22, '#ff3e9b');
       ctx.drawImage(img, -d.w / 2, -d.h / 2);
       ctx.restore();
     }
@@ -4558,8 +4565,7 @@ function render() {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(Math.sin(spin) * 0.25);
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = w.type === 1 ? '#9d4bff' : '#ff8c42';
+    glow(20, w.type === 1 ? '#9d4bff' : '#ff8c42');
     ctx.drawImage(img, -d.w / 2, -d.h / 2);
     ctx.restore();
   }
@@ -4570,30 +4576,30 @@ function render() {
     const cy = state.portal.y;
     const t = state.portal.phase;
     // Inner glow
-    const glow = ctx.createRadialGradient(cx, cy, 6, cx, cy, 90);
-    glow.addColorStop(0,    'rgba(255, 255, 255, 0.95)');
-    glow.addColorStop(0.25, 'rgba(0, 229, 255, 0.70)');
-    glow.addColorStop(0.55, 'rgba(157, 75, 255, 0.45)');
-    glow.addColorStop(1,    'rgba(255, 62, 155, 0)');
+    const portalGrad = ctx.createRadialGradient(cx, cy, 6, cx, cy, 90);
+    portalGrad.addColorStop(0,    'rgba(255, 255, 255, 0.95)');
+    portalGrad.addColorStop(0.25, 'rgba(0, 229, 255, 0.70)');
+    portalGrad.addColorStop(0.55, 'rgba(157, 75, 255, 0.45)');
+    portalGrad.addColorStop(1,    'rgba(255, 62, 155, 0)');
     ctx.save();
-    ctx.fillStyle = glow;
+    ctx.fillStyle = portalGrad;
     ctx.fillRect(cx - 100, cy - 100, 200, 200);
     // Orbiting particles — many colors spinning around the portal
     const colors = ['#ff3e9b', '#00e5ff', '#ffd24a', '#9d4bff', '#66ff99', '#ff8c42'];
+    if (!isMobile) { ctx.shadowBlur = 12; }
     for (let i = 0; i < 32; i++) {
       const a = (i / 32) * Math.PI * 2 + t;
       const r = 62 + Math.sin(t * 2 + i * 0.5) * 10;
       const px = cx + Math.cos(a) * r;
       const py = cy + Math.sin(a) * r * 0.8;
       ctx.fillStyle = colors[i % colors.length];
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = colors[i % colors.length];
+      if (!isMobile) ctx.shadowColor = colors[i % colors.length];
       ctx.beginPath();
       ctx.arc(px, py, 4.5, 0, Math.PI * 2);
       ctx.fill();
     }
     // Inner rotating ring
-    ctx.shadowBlur = 0;
+    clearGlow();
     ctx.lineWidth = 3;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.beginPath();
@@ -4605,8 +4611,7 @@ function render() {
   // Enemy bullets — values configurable in VFX panel
   for (const b of state.enemyBullets) {
     ctx.save();
-    ctx.shadowBlur = vfx.enemyBulletGlow;
-    ctx.shadowColor = vfx.enemyBulletColor;
+    glow(vfx.enemyBulletGlow, vfx.enemyBulletColor);
     ctx.fillStyle = vfx.enemyBulletColor;
     ctx.beginPath();
     ctx.arc(b.x, b.y, vfx.enemyBulletSize, 0, Math.PI * 2);
@@ -4624,7 +4629,7 @@ function render() {
     if (!e.alive) continue;
     const bob = Math.sin(e.bob) * 3;
     ctx.save();
-    if (e.flashTimer > 0) ctx.filter = 'brightness(2.5)';
+    if (e.flashTimer > 0 && !isMobile) ctx.filter = 'brightness(2.5)';
     const sprite = assets[e.variant] ? assets[e.variant].image : assets.enemy1.image;
     const sd = imgDims(sprite);
     const esc = scales[e.variant] || 1;
@@ -4654,8 +4659,7 @@ function render() {
       ctx.translate(cx, cy);
       ctx.rotate(rot);
       ctx.scale(scale, scale);
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = '#ffd24a';
+      glow(18, '#ffd24a');
       ctx.drawImage(img, -d.w / 2, -d.h / 2);
       ctx.restore();
     }
@@ -4666,9 +4670,7 @@ function render() {
     ctx.save();
     ctx.translate(b.x, b.y);
     if (b.facing < 0) ctx.scale(-1, 1);
-    // glow
-    ctx.shadowBlur = 14;
-    ctx.shadowColor = vfx.bulletColor;
+    glow(14, vfx.bulletColor);
     const bImg = assets.bullet.image;
     const bd = imgDims(bImg);
     ctx.drawImage(bImg, -bd.w / 2, -bd.h / 2);
@@ -4694,8 +4696,7 @@ function render() {
     // Jetpack flame indicator (toggleable)
     if (p.jetpackOn && vfx.jetpackFlameOn) {
       ctx.save();
-      ctx.shadowBlur = 26;
-      ctx.shadowColor = vfx.jetpackColor;
+      glow(26, vfx.jetpackColor);
       ctx.fillStyle = vfx.jetpackColor;
       const fx = p.x + p.w / 2;
       const fy = p.y + p.h;
@@ -4723,8 +4724,7 @@ function render() {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
       ctx.fillRect(-q.size / 2, -q.size * 0.35, q.size, q.size * 0.18);
     } else {
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = q.color;
+      glow(8, q.color);
       ctx.beginPath();
       ctx.arc(q.x, q.y, q.size, 0, Math.PI * 2);
       ctx.fill();
@@ -5842,6 +5842,7 @@ function init() {
 
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) state.lastTime = 0; });
 
   // Try to auto-load images from ./assets/ folder
   // Skip any asset that was already restored from localStorage.
