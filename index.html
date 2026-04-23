@@ -5366,9 +5366,19 @@ function tryLoadSound(key) {
       sounds[key] = { audio, playing: false, autoLoaded: true };
       const nameEl = document.getElementById('sfx-name-' + key);
       if (nameEl) nameEl.textContent = key + '.' + ext + ' (auto)';
-      // If we're on a menu screen and this is the menu music, start it
-      if (key === 'menuMusic' && (state.screen === 'start' || state.screen === 'select')) {
-        playMusicForScreen(state.screen);
+      // If the user already interacted and this is the track that should be
+      // playing right now, start it immediately (handles late-loading on mobile).
+      if (_musicUnlocked && isMusicKey(key)) {
+        const shouldPlay = (key === state.currentMusic) ||
+          (!state.currentMusic && key === 'menuMusic' &&
+           (state.screen === 'start' || state.screen === 'select'));
+        if (shouldPlay) {
+          state.currentMusic = key;
+          try {
+            const p = audio.play();
+            if (p instanceof Promise) p.then(() => { sounds[key].playing = true; }).catch(() => {});
+          } catch (e) {}
+        }
       }
     };
     audio.onerror = () => tryNext();
@@ -5741,27 +5751,27 @@ function init() {
     updateGamepadHint();
   });
 
-  // Resume music on first user interaction (browsers block autoplay until then).
-  // Use capture phase so we fire BEFORE other click handlers for minimum latency.
-  const resumeMusic = () => {
-    // Fire play() immediately & synchronously on the current-target audio
+  // iOS/mobile: audio is blocked until a user gesture. We keep trying on every
+  // gesture until the music is confirmed playing (handles late-loading MP3s).
+  let _musicUnlocked = false;
+
+  const tryPlayCurrentMusic = () => {
+    _musicUnlocked = true;
     const key = state.currentMusic;
-    if (key && sounds[key] && sounds[key].audio) {
-      const s = sounds[key];
-      s.audio.volume = getVolume(key);
-      setupAudioForKey(s.audio, key);  // sets loop correctly per key category
-      try {
-        const p = s.audio.play();
-        if (p && p.then) p.then(() => { s.playing = true; }).catch(() => { s.playing = false; });
-      } catch (e) {}
-    } else {
-      playMusicForScreen(state.screen);
-    }
-    window.removeEventListener('pointerdown', resumeMusic, true);
-    window.removeEventListener('keydown', resumeMusic, true);
+    if (!key) { playMusicForScreen(state.screen); return; }
+    const s = sounds[key];
+    if (!s || !s.audio) { playMusicForScreen(state.screen); return; }
+    if (s.playing) return;
+    s.audio.volume = getVolume(key);
+    setupAudioForKey(s.audio, key);
+    try {
+      const p = s.audio.play();
+      if (p instanceof Promise) p.then(() => { s.playing = true; }).catch(() => { s.playing = false; });
+    } catch (e) {}
   };
-  window.addEventListener('pointerdown', resumeMusic, true);
-  window.addEventListener('keydown', resumeMusic, true);
+
+  window.addEventListener('pointerdown', tryPlayCurrentMusic, true);
+  window.addEventListener('keydown',     tryPlayCurrentMusic, true);
 
   // Start button -> force music to play, let user hear it briefly on the
   // logo screen, then transition to character select.
