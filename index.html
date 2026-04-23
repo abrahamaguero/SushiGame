@@ -5348,7 +5348,6 @@ function tryLoadAsset(key) {
 }
 
 function tryLoadSound(key) {
-  // Skip if this sound was already restored from localStorage (user upload)
   if (sounds[key] && (sounds[key].dataUrl || sounds[key].autoLoaded)) return;
   const def = SOUND_DEFS.find(d => d.key === key);
   const folder = (def && def.folder) ? def.folder : 'sfx';
@@ -5359,6 +5358,14 @@ function tryLoadSound(key) {
     const ext = exts[idx++];
     const audio = new Audio();
     audio.preload = 'auto';
+
+    // Store the audio element immediately so gesture handlers can call
+    // play() on it before it finishes loading — iOS honours gesture-play
+    // even on unloaded elements, executing it when data arrives.
+    if (isMusicKey(key) && !(sounds[key] && sounds[key].autoLoaded)) {
+      sounds[key] = { audio, playing: false, loading: true };
+    }
+
     audio.oncanplaythrough = () => {
       if (sounds[key] && (sounds[key].autoLoaded || sounds[key].dataUrl)) return;
       if (def.loop) audio.loop = true;
@@ -5367,22 +5374,11 @@ function tryLoadSound(key) {
       sounds[key] = { audio, playing: false, autoLoaded: true };
       const nameEl = document.getElementById('sfx-name-' + key);
       if (nameEl) nameEl.textContent = key + '.' + ext + ' (auto)';
-      // If the user already interacted and this is the track that should be
-      // playing right now, start it immediately (handles late-loading on mobile).
-      if (_musicUnlocked && isMusicKey(key)) {
-        const shouldPlay = (key === state.currentMusic) ||
-          (!state.currentMusic && key === 'menuMusic' &&
-           (state.screen === 'start' || state.screen === 'select'));
-        if (shouldPlay) {
-          state.currentMusic = key;
-          try {
-            const p = audio.play();
-            if (p instanceof Promise) p.then(() => { sounds[key].playing = true; }).catch(() => {});
-          } catch (e) {}
-        }
-      }
     };
-    audio.onerror = () => tryNext();
+    audio.onerror = () => {
+      if (sounds[key] && sounds[key].loading) delete sounds[key];
+      tryNext();
+    };
     audio.src = './assets/' + folder + '/' + key + '.' + ext;
   };
   tryNext();
@@ -5756,17 +5752,35 @@ function init() {
   // gesture until the music is confirmed playing (handles late-loading MP3s).
   const tryPlayCurrentMusic = () => {
     _musicUnlocked = true;
-    const key = state.currentMusic;
-    if (!key) { playMusicForScreen(state.screen); return; }
-    const s = sounds[key];
-    if (!s || !s.audio) { playMusicForScreen(state.screen); return; }
-    if (s.playing) return;
-    s.audio.volume = getVolume(key);
-    setupAudioForKey(s.audio, key);
-    try {
-      const p = s.audio.play();
-      if (p instanceof Promise) p.then(() => { s.playing = true; }).catch(() => { s.playing = false; });
-    } catch (e) {}
+
+    // Determine which track should be playing for the current screen
+    const screenKey = { start: 'menuMusic', select: 'menuMusic',
+                        gameover: 'gameOverMusic', won: 'winMusic' }[state.screen]
+                      || state.currentMusic;
+
+    // iOS: call play() on every music element from this gesture — even ones
+    // still loading. iOS queues the play and executes it when data arrives.
+    SOUND_DEFS.forEach(def => {
+      if (!isMusicKey(def.key)) return;
+      const s = sounds[def.key];
+      if (!s || !s.audio || s._iosUnlocked) return;
+      s._iosUnlocked = true;
+      const shouldBePlaying = def.key === screenKey;
+      if (!shouldBePlaying) return; // only play the one that's needed
+      if (s.playing) return;
+      if (def.key !== state.currentMusic) {
+        if (state.currentMusic) stopSound(state.currentMusic);
+        state.currentMusic = def.key;
+      }
+      s.audio.volume = getVolume(def.key);
+      setupAudioForKey(s.audio, def.key);
+      try {
+        const p = s.audio.play();
+        if (p instanceof Promise) p.then(() => { s.playing = true; }).catch(() => {
+          s._iosUnlocked = false; // allow retry next gesture
+        });
+      } catch (e) { s._iosUnlocked = false; }
+    });
   };
 
   window.addEventListener('pointerdown', tryPlayCurrentMusic, true);
