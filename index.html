@@ -1645,6 +1645,7 @@
 const W = 1120, H = 640;
 const LEVEL_WIDTH = 4000;
 const BULLET_SPEED = 11;
+let _musicUnlocked = false; // true after first user gesture — lets late-loading music start
 const GOAL_X = 3850;
 
 /* Mutable physics / behaviors - editable from the Behaviors tab */
@@ -5753,8 +5754,6 @@ function init() {
 
   // iOS/mobile: audio is blocked until a user gesture. We keep trying on every
   // gesture until the music is confirmed playing (handles late-loading MP3s).
-  let _musicUnlocked = false;
-
   const tryPlayCurrentMusic = () => {
     _musicUnlocked = true;
     const key = state.currentMusic;
