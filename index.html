@@ -261,27 +261,33 @@
   }
   .hud-overlay.hidden { display: none; }
 
+  .hud-timer-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
   .pause-btn {
-    position: absolute;
-    top: calc(10px * var(--gs,1));
-    right: calc(10px * var(--gs,1));
+    pointer-events: auto;
+    border: 2px solid rgba(255,255,255,0.5);
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f472b6, #a855f7, #6366f1);
+    color: #fff;
+    font-size: calc(18px * var(--gs,1));
     width: calc(44px * var(--gs,1));
     height: calc(44px * var(--gs,1));
-    border-radius: 50%;
-    border: none;
-    background: rgba(0,0,0,0.55);
-    color: #fff;
-    font-size: calc(20px * var(--gs,1));
+    min-width: calc(44px * var(--gs,1));
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 60;
     line-height: 1;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    transition: background 0.15s;
+    box-shadow: 0 3px 12px rgba(168,85,247,0.6), inset 0 1px 0 rgba(255,255,255,0.35);
+    transition: transform 0.1s, box-shadow 0.1s;
+    -webkit-tap-highlight-color: transparent;
+    flex-shrink: 0;
   }
-  .pause-btn:active { background: rgba(255,255,255,0.25); }
+  .pause-btn:active { transform: scale(0.9); box-shadow: 0 1px 6px rgba(168,85,247,0.4); }
   .pause-btn.hidden { display: none; }
 
   .pause-overlay {
@@ -1358,15 +1364,17 @@
           </div>
         </div>
         <div class="hud-stack-right">
-          <div class="hud-chip hud-chip-cyan">
-            <span class="hud-chip-icon">⏱️</span>
-            <span class="hud-chip-value" id="hud-timer">1:00</span>
-          </div>
           <div class="hud-chip hud-chip-small" id="hud-level-chip">
             <span class="hud-chip-value"><span id="hud-level-world">1</span>-<span id="hud-level-num">1</span></span>
           </div>
+          <div class="hud-timer-row">
+            <div class="hud-chip hud-chip-cyan">
+              <span class="hud-chip-icon">⏱️</span>
+              <span class="hud-chip-value" id="hud-timer">1:00</span>
+            </div>
+            <button class="pause-btn hidden" id="pause-btn" aria-label="Pausa">⏸</button>
+          </div>
         </div>
-        <button class="pause-btn hidden" id="pause-btn" aria-label="Pausa">⏸</button>
       </div>
       <div class="pause-overlay hidden" id="pause-overlay">
         <div class="pause-panel">
