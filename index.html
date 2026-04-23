@@ -1724,6 +1724,52 @@ const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 function glow(blur, color) { if (!isMobile) { ctx.shadowBlur = blur; ctx.shadowColor = color; } }
 function clearGlow() { if (!isMobile) ctx.shadowBlur = 0; }
 
+// ---- Web Audio API — zero-stutter SFX ----
+let sfxCtx = null;
+const sfxBuffers = {}; // key -> AudioBuffer (decoded once, played many times)
+
+function getSfxCtx() {
+  if (!sfxCtx) {
+    try { sfxCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  return sfxCtx;
+}
+
+async function cacheSfxBuffer(key) {
+  const s = sounds[key];
+  if (!s || !s.audio || !s.audio.src) return;
+  try {
+    const actx = getSfxCtx();
+    if (!actx) return;
+    const resp = await fetch(s.audio.src);
+    const ab = await resp.arrayBuffer();
+    sfxBuffers[key] = await actx.decodeAudioData(ab);
+  } catch(e) {}
+}
+
+function playSfxNow(key) {
+  const buf = sfxBuffers[key];
+  if (buf) {
+    try {
+      const actx = getSfxCtx();
+      if (!actx) throw 0;
+      if (actx.state === 'suspended') actx.resume().catch(()=>{});
+      const gain = actx.createGain();
+      gain.gain.value = getVolume(key);
+      gain.connect(actx.destination);
+      const src = actx.createBufferSource();
+      src.buffer = buf;
+      src.connect(gain);
+      src.start(0);
+      return;
+    } catch(e) {}
+  }
+  // fallback: HTMLAudioElement
+  const s = sounds[key];
+  if (!s || !s.audio) return;
+  try { s.audio.currentTime = 0; s.audio.volume = getVolume(key); s.audio.play().catch(()=>{}); } catch(e) {}
+}
+
 // Cached sky gradient — recreated only when colors change
 let _skyGradKey = '', _skyGrad = null;
 function getSkyGrad(bg) {
@@ -2307,6 +2353,7 @@ function installGeneratedSfx() {
       setupAudioForKey(audio, key);
       audio.volume = getVolume(key);
       sounds[key] = { audio, playing: false, generated: true, fileName: 'generado' };
+      if (!isMusicKey(key)) cacheSfxBuffer(key);
       const nameEl = document.getElementById('sfx-name-' + key);
       if (nameEl) nameEl.textContent = 'generado';
     } catch (e) {
@@ -3693,12 +3740,7 @@ function playSound(key, loop = false) {
       }
     }
   } else {
-    try {
-      s.audio.currentTime = 0;
-      s.audio.volume = getVolume(key);
-      const p = s.audio.play();
-      if (p) p.catch(()=>{});
-    } catch (e) {}
+    playSfxNow(key);
   }
 }
 
@@ -5482,6 +5524,7 @@ function tryLoadSound(key) {
       setupAudioForKey(audio, key);
       audio.volume = getVolume(key);
       sounds[key] = { audio, playing: false, autoLoaded: true };
+      if (!isMusicKey(key)) cacheSfxBuffer(key);
       const nameEl = document.getElementById('sfx-name-' + key);
       if (nameEl) nameEl.textContent = key + '.' + ext + ' (auto)';
     };
@@ -5508,6 +5551,7 @@ function openSoundUpload(key) {
       setupAudioForKey(audio, key);
       audio.volume = getVolume(key);
       sounds[key] = { audio, playing: false, dataUrl, fileName: file.name };
+      if (!isMusicKey(key)) cacheSfxBuffer(key);
       document.getElementById('sfx-name-' + key).textContent = file.name;
       // If this is a music track and we're on the matching screen, start playback
       if (isMusicKey(key)) {
@@ -5873,6 +5917,8 @@ function init() {
   // gesture until the music is confirmed playing (handles late-loading MP3s).
   const tryPlayCurrentMusic = () => {
     _musicUnlocked = true;
+    const actx = getSfxCtx();
+    if (actx && actx.state === 'suspended') actx.resume().catch(()=>{});
 
     // Determine which track should be playing for the current screen
     const screenKey = { start: 'menuMusic', select: 'menuMusic',
