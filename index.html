@@ -406,6 +406,26 @@
     }
   }
 
+  /* === PRODUCTION MODE (deployed) === */
+  body.production .app { grid-template-columns: 1fr; }
+  body.production .panel,
+  body.production #btn-open-panel { display: none !important; }
+  body.production .game-area { padding: 0; }
+  body.production .canvas-wrap {
+    width: min(100vw, calc(100vh * (1120 / 640)));
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* === REPOSITIONABLE JOYSTICK — left capture zone === */
+  #left-zone {
+    position: absolute;
+    left: 0; top: 0;
+    width: 50%; height: 100%;
+    pointer-events: auto;
+    touch-action: none;
+  }
+
   .controls-hint {
     margin-top: 10px;
     color: var(--text-dim);
@@ -1332,6 +1352,7 @@
         <div class="level-sub">¡Prepárate!</div>
       </div>
       <div class="touch-controls hidden" id="touch-controls">
+        <div id="left-zone"></div>
         <div class="joystick-base" id="joystick-base">
           <div class="joystick-thumb" id="joystick-thumb"></div>
         </div>
@@ -1814,6 +1835,7 @@ function setupTouchControls() {
 
   let joyPointerId = null;
   const maxRadius = 55;
+  const leftZone = document.getElementById('left-zone');
 
   const resetThumb = () => {
     joyThumb.style.transform = 'translate(-50%, -50%)';
@@ -1822,15 +1844,28 @@ function setupTouchControls() {
     joyBase.classList.remove('active');
   };
 
-  joyBase.addEventListener('pointerdown', (e) => {
+  const repositionBase = (e) => {
+    const tcRect = tc.getBoundingClientRect();
+    const half = 75; // joyBase is 150px, center it on the touch
+    const rx = Math.max(half, Math.min(e.clientX - tcRect.left, tcRect.width / 2 - half));
+    const ry = Math.max(half, Math.min(e.clientY - tcRect.top, tcRect.height - half));
+    joyBase.style.left   = rx + 'px';
+    joyBase.style.top    = ry + 'px';
+    joyBase.style.bottom = 'auto';
+    joyBase.style.transform = 'translate(-50%, -50%)';
+  };
+
+  // Tapping anywhere in the left half repositions the joystick
+  leftZone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (joyPointerId !== null) return;
+    repositionBase(e);
     joyPointerId = e.pointerId;
-    try { joyBase.setPointerCapture(e.pointerId); } catch (err) {}
+    try { leftZone.setPointerCapture(e.pointerId); } catch (err) {}
     joyBase.classList.add('active');
     handleJoyMove(e);
   });
-  joyBase.addEventListener('pointermove', (e) => {
+  leftZone.addEventListener('pointermove', (e) => {
     if (e.pointerId !== joyPointerId) return;
     e.preventDefault();
     handleJoyMove(e);
@@ -1839,15 +1874,11 @@ function setupTouchControls() {
     if (e.pointerId !== joyPointerId) return;
     e.preventDefault();
     joyPointerId = null;
-    try { joyBase.releasePointerCapture(e.pointerId); } catch (err) {}
+    try { leftZone.releasePointerCapture(e.pointerId); } catch (err) {}
     resetThumb();
   };
-  joyBase.addEventListener('pointerup', endJoy);
-  joyBase.addEventListener('pointercancel', endJoy);
-  joyBase.addEventListener('pointerleave', (e) => {
-    if (e.pointerId !== joyPointerId) return;
-    // Only end if user actually lifted out of the base without tracking
-  });
+  leftZone.addEventListener('pointerup', endJoy);
+  leftZone.addEventListener('pointercancel', endJoy);
 
   function handleJoyMove(e) {
     const rect = joyBase.getBoundingClientRect();
@@ -1881,7 +1912,7 @@ function setupTouchControls() {
   shootBtn.addEventListener('pointerleave', shootUp);
 
   // Prevent context menu / long-press selection on iOS
-  [joyBase, shootBtn].forEach(el => {
+  [leftZone, joyBase, shootBtn].forEach(el => {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
   });
@@ -5791,6 +5822,24 @@ function init() {
       prompt('Copia este JSON y pégalo donde lo necesites:', json);
     });
   });
+
+  // Production mode: hide panel/taller when deployed (not localhost/file)
+  const isProduction = location.protocol !== 'file:' &&
+    !location.hostname.includes('localhost') &&
+    !location.hostname.includes('127.0.0.1');
+  if (isProduction) {
+    document.body.classList.add('production');
+    // Request fullscreen on first touch/click for tablet experience
+    const goFullscreen = () => {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      window.removeEventListener('pointerdown', goFullscreen);
+      window.removeEventListener('keydown', goFullscreen);
+    };
+    window.addEventListener('pointerdown', goFullscreen);
+    window.addEventListener('keydown', goFullscreen);
+  }
 
   // Panel open/close
   const appEl = document.querySelector('.app');
